@@ -1,46 +1,44 @@
 import streamlit as st
 import random
 
-# --- 1. HORIZONTAL GAP CRUSHER ---
+# --- 1. PAGE CONFIG ---
 st.set_page_config(page_title="Bidding War", layout="centered")
 
 st.markdown("""
-    <style>
-    /* Target the container that holds the columns to remove the horizontal gap */
-    [data-testid="stHorizontalBlock"] {
-        gap: 2px !important; /* This controls the space between Column 1, 2, and 3 */
-        flex-wrap: nowrap !important;
-    }
+<style>
+/* ── Crush the gap between grid columns ── */
+div[data-testid="stHorizontalBlock"] {
+    gap: 0rem !important;
+}
 
-    /* Ensure columns take up the full available width with no internal padding */
-    [data-testid="column"] {
-        padding-left: 0px !important;
-        padding-right: 0px !important;
-        margin-left: 0px !important;
-        margin-right: 0px !important;
-    }
+/* ── Make each grid button square and fill its cell ── */
+div[data-testid="stHorizontalBlock"] div[data-testid="stColumn"] {
+    padding: 0 !important;
+}
 
-    /* Button Styling to make them look like a unified grid */
-    .stButton > button {
-        width: 100% !important;
-        height: 28vw !important; 
-        max-height: 100px !important;
-        font-size: 30px !important;
-        font-weight: bold !important;
-        border: 1px solid #ddd !important;
-        border-radius: 4px !important;
-    }
+div[data-testid="stHorizontalBlock"] div[data-testid="stColumn"] button {
+    width: 100% !important;
+    aspect-ratio: 1 / 1;
+    font-size: 2rem !important;
+    font-weight: bold !important;
+    border-radius: 0 !important;
+    border: 2px solid #ccc !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
 
-    /* Tighten vertical spacing between rows */
-    div.element-container {
-        margin-bottom: -10px !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+/* ── Hover effect ── */
+div[data-testid="stHorizontalBlock"] div[data-testid="stColumn"] button:not(:disabled):hover {
+    background-color: #e8f4fd !important;
+    border-color: #1a73e8 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 # --- 2. GAME LOGIC ---
 def check_winner(board):
-    lines = [(0,1,2), (3,4,5), (6,7,8), (0,3,6), (1,4,7), (2,5,8), (0,4,8), (2,4,6)]
+    lines = [(0,1,2),(3,4,5),(6,7,8),(0,3,6),(1,4,7),(2,5,8),(0,4,8),(2,4,6)]
     for a, b, c in lines:
         if board[a] == board[b] == board[c] and board[a] is not None:
             return board[a]
@@ -76,13 +74,13 @@ def calculate_ai_bid(board, ai_cash, player_cash):
         return random.randint(max(1, int(ai_cash * 0.01)), max(2, int(ai_cash * 0.25)))
     return random.randint(int(ai_cash * 0.1), int(ai_cash * 0.5))
 
+
 # --- 3. UI ---
 st.title("💰 Bidding Tic-Tac-Toe")
 
-# YOUR ORIGINAL INSTRUCTIONS
 st.info("""
-👉 **Step 1:** Select an empty square below. \n
-👉 **Step 2:** Enter your bid at the bottom.
+👉 **Step 1:** Select an empty square below.
+\n👉 **Step 2:** Enter your bid at the bottom.
 """)
 
 if 'board' not in st.session_state:
@@ -94,35 +92,43 @@ c1, c2 = st.columns(2)
 c1.metric("Your Cash", f"${st.session_state.cash['Player']}")
 c2.metric("AI Cash", f"${st.session_state.cash['AI']}")
 
-# --- 4. THE COMPACT GRID ---
+# --- 4. COMPACT GRID (zero-gap columns) ---
 for r in range(3):
-    # Using a single columns call for each row to control 'gap'
     cols = st.columns(3)
     for c in range(3):
         idx = r * 3 + c
         mark = st.session_state.board[idx]
-        if cols[c].button(mark if mark else " ", key=f"s{idx}", disabled=mark is not None or st.session_state.winner is not None):
+        if cols[c].button(
+            mark if mark else " ",
+            key=f"s{idx}",
+            disabled=mark is not None or st.session_state.winner is not None
+        ):
             st.session_state.pending_move = idx
             st.rerun()
+
 
 # --- 5. BIDDING ---
 if 'pending_move' in st.session_state and st.session_state.winner is None:
     st.markdown(f"### 🎯 Bidding on Square {st.session_state.pending_move + 1}")
     bid = st.number_input("Enter your bid:", 0, st.session_state.cash['Player'], step=10)
-    
+
     if st.button("Submit Bid", type="primary", use_container_width=True):
-        ai_bid = calculate_ai_bid(st.session_state.board, st.session_state.cash['AI'], st.session_state.cash['Player'])
+        ai_bid = calculate_ai_bid(
+            st.session_state.board,
+            st.session_state.cash['AI'],
+            st.session_state.cash['Player']
+        )
         st.session_state.cash['Player'] -= bid
         st.session_state.cash['AI'] -= ai_bid
-        
+
         if bid >= ai_bid:
             st.session_state.board[st.session_state.pending_move] = 'X'
             st.success(f"You won! AI bid ${ai_bid}")
         else:
             best_sq = get_best_move(st.session_state.board)
             st.session_state.board[best_sq] = 'O'
-            st.error(f"AI won (${ai_bid}) and took Square {best_sq+1}!")
-            
+            st.error(f"AI won (${ai_bid}) and took Square {best_sq + 1}!")
+
         st.session_state.winner = check_winner(st.session_state.board)
         del st.session_state.pending_move
         st.rerun()
@@ -131,5 +137,6 @@ if st.session_state.winner:
     st.divider()
     st.success(f"Winner: {st.session_state.winner}!")
     if st.button("Reset Game", use_container_width=True):
-        for key in list(st.session_state.keys()): del st.session_state[key]
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
         st.rerun()
