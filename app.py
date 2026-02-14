@@ -9,51 +9,77 @@ def check_winner(board):
             return board[a]
     return None
 
+def get_smart_bid(board, ai_cash, player_cash):
+    # 1. AI tries to find a winning move or a block
+    # This is a simple 'Smarter' logic:
+    if ai_cash > player_cash:
+        return player_cash + 1 # Guaranteed win if they have more money
+    return random.randint(int(ai_cash * 0.2), int(ai_cash * 0.5))
+
 # --- UI SETUP ---
+st.set_page_config(page_title="Bidding Tic-Tac-Toe", page_icon="💰")
 st.title("💰 Bidding Tic-Tac-Toe")
-st.write("Highest bidder wins the square. Tie bids go to the AI!")
+
+# Instructions per your request
+st.info("👉 **Step 1:** Select an empty square below. \n\n👉 **Step 2:** Enter your bid at the bottom.")
 
 if 'board' not in st.session_state:
     st.session_state.board = [None] * 9
     st.session_state.cash = {'Player': 1000, 'AI': 1000}
     st.session_state.winner = None
 
-# Stats Display
-col1, col2 = st.columns(2)
-col1.metric("Your Cash", f"${st.session_state.cash['Player']}")
-col2.metric("AI Cash", f"${st.session_state.cash['AI']}")
+# Display Balances
+c1, c2 = st.columns(2)
+c1.metric("Your Cash", f"${st.session_state.cash['Player']}")
+c2.metric("AI Cash", f"${st.session_state.cash['AI']}")
 
-# Game Board
+# --- THE GRID ---
+# Changed to show X/O or empty space
 grid = st.columns(3)
 for i in range(9):
     with grid[i % 3]:
-        label = st.session_state.board[i] if st.session_state.board[i] else f"Square {i+1}"
-        if st.button(label, key=f"btn{i}", disabled=st.session_state.board[i] is not None or st.session_state.winner is not None):
+        current_mark = st.session_state.board[i]
+        button_label = current_mark if current_mark else " "
+        
+        # Highlight the selected square
+        is_selected = 'pending_move' in st.session_state and st.session_state.pending_move == i
+        
+        if st.button(button_label, key=f"sq{i}", use_container_width=True, 
+                     disabled=current_mark is not None or st.session_state.winner is not None):
             st.session_state.pending_move = i
+            st.rerun()
 
-# Bidding Interface
+# --- BIDDING SECTION ---
 if 'pending_move' in st.session_state and st.session_state.winner is None:
-    bid = st.number_input("Enter your bid:", min_value=0, max_value=st.session_state.cash['Player'], step=1)
-    if st.button("Submit Bid"):
+    st.write(f"--- Bidding on Square {st.session_state.pending_move + 1} ---")
+    bid = st.number_input("How much will you bid?", min_value=0, max_value=st.session_state.cash['Player'], step=10)
+    
+    if st.button("Confirm Bid & Play Turn"):
         move = st.session_state.pending_move
-        ai_bid = random.randint(1, st.session_state.cash['AI'])
+        ai_bid = get_smart_bid(st.session_state.board, st.session_state.cash['AI'], st.session_state.cash['Player'])
+        
+        # Update Cash (Both players lose their bid amount regardless of win)
+        st.session_state.cash['Player'] -= bid
+        st.session_state.cash['AI'] -= ai_bid
         
         if bid >= ai_bid:
             st.session_state.board[move] = 'X'
-            st.session_state.cash['Player'] -= bid
-            st.success(f"You won the bid! (AI bid ${ai_bid})")
+            st.success(f"You won the square! You bid ${bid}, AI bid ${ai_bid}.")
         else:
             st.session_state.board[move] = 'O'
-            st.session_state.cash['AI'] -= ai_bid
-            st.error(f"AI won the bid with ${ai_bid}!")
+            st.error(f"AI won the square! AI bid ${ai_bid}, you bid ${bid}.")
         
         st.session_state.winner = check_winner(st.session_state.board)
         del st.session_state.pending_move
         st.rerun()
 
+# End Game
 if st.session_state.winner:
-    st.balloons()
-    st.header(f"Winner: {st.session_state.winner}!")
-    if st.button("Reset Game"):
+    if st.session_state.winner == 'X':
+        st.balloons()
+        st.success("YOU WON THE GAME!")
+    else:
+        st.error("AI WON THE GAME!")
+    if st.button("Play Again"):
         for key in list(st.session_state.keys()): del st.session_state[key]
         st.rerun()
