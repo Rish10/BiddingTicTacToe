@@ -1,29 +1,38 @@
 import streamlit as st
 import random
 
-# --- 1. THE ULTIMATE MOBILE GRID FIX ---
+# --- 1. TIGHT MOBILE GRID CSS ---
 st.set_page_config(page_title="Bidding War", layout="centered")
 
-# This CSS forces the columns to stay at 30% width and prevents stacking
 st.markdown("""
     <style>
-    /* Force columns to stay side-by-side */
+    /* Force columns to stay side-by-side with minimal gap */
     [data-testid="column"] {
-        width: 31% !important;
-        flex: 1 1 31% !important;
-        min-width: 31% !important;
+        width: 32% !important;
+        flex: 1 1 32% !important;
+        min-width: 32% !important;
+        padding: 1px !important; /* Reduced padding between buttons */
     }
-    /* Make the horizontal block not wrap */
+    
+    /* Remove the default large gap between columns */
     [data-testid="stHorizontalBlock"] {
+        gap: 2px !important; 
         flex-wrap: nowrap !important;
     }
-    /* Square buttons that fit mobile screens */
+
+    /* Square buttons: height matches width for a grid look */
     .stButton > button {
         width: 100% !important;
-        height: 20vw !important; /* Based on screen width */
-        max-height: 90px !important;
-        font-size: 24px !important;
-        margin-bottom: 5px !important;
+        height: 28vw !important; 
+        max-height: 100px !important;
+        font-size: 28px !important;
+        font-weight: bold !important;
+        margin: 0px !important;
+    }
+
+    /* Tighten up the metrics area */
+    [data-testid="stMetric"] {
+        padding: 5px !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -65,15 +74,14 @@ def get_best_move(board):
 
 def calculate_ai_bid(board, ai_cash, player_cash):
     empty = board.count(None)
-    # 1%-25% Rule for Early Game
+    # Your 1%-25% Rule for Early Game
     if empty > 6:
         return random.randint(max(1, int(ai_cash * 0.01)), max(2, int(ai_cash * 0.25)))
     return random.randint(int(ai_cash * 0.1), int(ai_cash * 0.5))
 
-# --- 3. UI & RESTORED INSTRUCTIONS ---
+# --- 3. UI & INSTRUCTIONS ---
 st.title("💰 Bidding Tic-Tac-Toe")
 
-# RESTORED INSTRUCTIONS
 st.info("""
 👉 **Step 1:** Select an empty square below. \n
 👉 **Step 2:** Enter your bid at the bottom.
@@ -90,7 +98,6 @@ c1.metric("Your Cash", f"${st.session_state.cash['Player']}")
 c2.metric("AI Cash", f"${st.session_state.cash['AI']}")
 
 # --- 4. THE GRID ---
-# Using a loop to create 3 distinct row containers for stability
 for r in range(3):
     cols = st.columns(3)
     for c in range(3):
@@ -108,7 +115,6 @@ if 'pending_move' in st.session_state and st.session_state.winner is None:
     if st.button("Submit Bid", type="primary", use_container_width=True):
         ai_bid = calculate_ai_bid(st.session_state.board, st.session_state.cash['AI'], st.session_state.cash['Player'])
         
-        # Money is gone for both!
         st.session_state.cash['Player'] -= bid
         st.session_state.cash['AI'] -= ai_bid
         
@@ -116,7 +122,7 @@ if 'pending_move' in st.session_state and st.session_state.winner is None:
             st.session_state.board[st.session_state.pending_move] = 'X'
             st.success(f"You won! AI bid ${ai_bid}")
         else:
-            # AI wins and picks ITS best move using Minimax
+            # AI wins and takes its BEST move
             best_sq = get_best_move(st.session_state.board)
             st.session_state.board[best_sq] = 'O'
             st.error(f"AI won the bid (${ai_bid}) and took Square {best_sq+1}!")
@@ -127,8 +133,7 @@ if 'pending_move' in st.session_state and st.session_state.winner is None:
 
 if st.session_state.winner:
     st.divider()
-    if st.session_state.winner == "Draw": st.warning("It's a Draw!")
-    else: st.success(f"Winner: {st.session_state.winner}!")
+    st.success(f"Winner: {st.session_state.winner}!")
     if st.button("Reset Game", use_container_width=True):
         for key in list(st.session_state.keys()): del st.session_state[key]
         st.rerun()
