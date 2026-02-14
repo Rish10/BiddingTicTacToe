@@ -1,77 +1,112 @@
-// ── AI LOGIC ───────────────────────────────────────────
-function checkWinner(b) {
-  const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
-  for (const [a,bv,c] of lines) {
-    if (b[a] && b[a] === b[bv] && b[a] === b[c]) return b[a];
-  }
-  return b.includes(null) ? null : 'Draw';
+import streamlit as st
+import streamlit.components.v1 as components
+
+st.set_page_config(page_title="Bidding War", layout="centered")
+
+# Hide Streamlit chrome to give the component full space
+st.markdown("""
+<style>
+  #MainMenu, footer, header { visibility: hidden; }
+  .block-container { padding: 0 !important; }
+</style>
+""", unsafe_allow_html=True)
+
+components.html("""
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #f4f6fb;
+  min-height: 100vh;
+  padding: 16px;
 }
 
-function minimax(b, depth, isMax) {
-  const r = checkWinner(b);
-  if (r === 'O') return 10 - depth;
-  if (r === 'X') return depth - 10;
-  if (r === 'Draw') return 0;
-  let best = isMax ? -Infinity : Infinity;
-  for (let i = 0; i < 9; i++) {
-    if (!b[i]) {
-      b[i] = isMax ? 'O' : 'X';
-      const score = minimax(b, depth + 1, !isMax);
-      b[i] = null;
-      best = isMax ? Math.max(best, score) : Math.min(best, score);
-    }
-  }
-  return best;
+h1 {
+  font-size: 1.4rem;
+  font-weight: 800;
+  text-align: center;
+  margin-bottom: 10px;
+  color: #1a1a2e;
 }
 
-// SMARTER MOVE SELECTION
-function getBestMove(b) {
-  let best = -Infinity, move = -1;
-  for (let i = 0; i < 9; i++) {
-    if (!b[i]) {
-      b[i] = 'O';
-      const score = minimax(b, 0, false);
-      b[i] = null;
-      if (score > best) { 
-        best = score; 
-        move = i; 
-      }
-    }
-  }
-  return move;
+.info-box {
+  background: #e8f4fd;
+  border: 1px solid #bee3f8;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  margin-bottom: 12px;
+  color: #2c5282;
+  text-align: center;
 }
 
-// SMARTER BIDDING LOGIC
-function aiRandomBid(emptySquares, targetSq) {
-  const aiCash = state.cash.AI;
-  const playerCash = state.cash.Player;
-  
-  // 1. Evaluate square importance
-  const tempBoardAI = [...state.board];
-  tempBoardAI[targetSq] = 'O';
-  const canAIWin = checkWinner(tempBoardAI) === 'O';
-  
-  const tempBoardPlayer = [...state.board];
-  tempBoardPlayer[targetSq] = 'X';
-  const canPlayerWin = checkWinner(tempBoardPlayer) === 'X';
-
-  // 2. High Priority: If someone can win this turn
-  if (canAIWin || canPlayerWin) {
-    // If AI has more money, bid PlayerCash + 10 to guarantee the win
-    if (aiCash > playerCash) return Math.min(aiCash, playerCash + 10);
-    // Otherwise, go all in
-    return aiCash;
-  }
-
-  // 3. Normal Play: Apply your 1%-25% Early Game Rule
-  if (emptySquares > 6) {
-    const minBid = Math.max(1, Math.floor(aiCash * 0.05));
-    const maxBid = Math.floor(aiCash * 0.25);
-    return Math.floor(Math.random() * (maxBid - minBid + 1)) + minBid;
-  }
-
-  // 4. Mid/Late Game: Strategic aggressive bidding
-  // AI bids more if it has more cash than the player
-  let multiplier = aiCash > playerCash ? 0.4 : 0.3;
-  return Math.floor(Math.random() * (aiCash * multiplier)) + Math.floor(aiCash * 0.1);
+.metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
 }
+.metric {
+  background: white;
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+  border: 1px solid #e0e0e0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.metric-label { font-size: 0.72rem; color: #888; margin-bottom: 2px; }
+.metric-value { font-size: 1.3rem; font-weight: bold; color: #222; }
+
+/* THE BOARD */
+.board {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  width: min(90vw, 300px);
+  margin: 0 auto 16px auto;
+  border: 3px solid #2d3748;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 900;
+  border: 1.5px solid #cbd5e0;
+  min-height: 80px;
+  transition: background 0.12s, transform 0.1s;
+  position: relative;
+}
+.cell.empty {
+  cursor: pointer;
+  background: white;
+  color: #bbb;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.cell.empty:hover  { background: #ebf8ff; color: #3182ce; }
+.cell.empty:active { background: #bee3f8; transform: scale(0.95); }
+.cell.locked { background: #f7fafc; color: #ddd; font-size: 0.85rem; cursor: not-allowed; }
+.cell.x { background: #ebf8ff; color: #2b6cb0; cursor: default; }
+.cell.o { background: #fff5f5; color: #c53030; cursor: default; }
+
+/* FLASH */
+.flash {
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-align: center;
+  animation: fadeIn 0.3s ease;
+}
+.flash.success { background: #c6f6d5; color: #276749; }
+.flash.error   { background: #fed7d7
