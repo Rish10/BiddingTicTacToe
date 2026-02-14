@@ -1,38 +1,43 @@
 import streamlit as st
 import random
 
-# --- 1. TIGHT MOBILE GRID CSS ---
+# --- 1. AGGRESSIVE CSS FOR TIGHT GAPS ---
 st.set_page_config(page_title="Bidding War", layout="centered")
 
 st.markdown("""
     <style>
-    /* Force columns to stay side-by-side with minimal gap */
+    /* Remove padding from the main column containers */
     [data-testid="column"] {
         width: 32% !important;
         flex: 1 1 32% !important;
         min-width: 32% !important;
-        padding: 1px !important; /* Reduced padding between buttons */
+        padding: 0px !important;  /* No padding inside columns */
+        margin: 0px !important;   /* No margin between columns */
     }
     
-    /* Remove the default large gap between columns */
+    /* Remove gap from the horizontal flex container */
     [data-testid="stHorizontalBlock"] {
-        gap: 2px !important; 
+        gap: 4px !important;      /* Extremely small gap */
         flex-wrap: nowrap !important;
     }
 
-    /* Square buttons: height matches width for a grid look */
+    /* Force buttons to be square and touch each other */
     .stButton > button {
         width: 100% !important;
         height: 28vw !important; 
         max-height: 100px !important;
-        font-size: 28px !important;
+        font-size: 30px !important;
         font-weight: bold !important;
         margin: 0px !important;
+        padding: 0px !important;
+        border: 1px solid #ddd !important;
     }
 
-    /* Tighten up the metrics area */
+    /* Tighten metrics */
     [data-testid="stMetric"] {
-        padding: 5px !important;
+        border: 1px solid #f0f2f6;
+        padding: 5px;
+        border-radius: 5px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -74,7 +79,6 @@ def get_best_move(board):
 
 def calculate_ai_bid(board, ai_cash, player_cash):
     empty = board.count(None)
-    # Your 1%-25% Rule for Early Game
     if empty > 6:
         return random.randint(max(1, int(ai_cash * 0.01)), max(2, int(ai_cash * 0.25)))
     return random.randint(int(ai_cash * 0.1), int(ai_cash * 0.5))
@@ -92,24 +96,24 @@ if 'board' not in st.session_state:
     st.session_state.cash = {'Player': 1000, 'AI': 1000}
     st.session_state.winner = None
 
-# Balances
 c1, c2 = st.columns(2)
 c1.metric("Your Cash", f"${st.session_state.cash['Player']}")
 c2.metric("AI Cash", f"${st.session_state.cash['AI']}")
 
-# --- 4. THE GRID ---
+# --- 4. THE GRID (Optimized for no gaps) ---
+# We create 3 separate horizontal blocks for each row
 for r in range(3):
-    cols = st.columns(3)
+    row_cols = st.columns(3)
     for c in range(3):
         idx = r * 3 + c
         mark = st.session_state.board[idx]
-        if cols[c].button(mark if mark else " ", key=f"s{idx}", disabled=mark is not None or st.session_state.winner is not None):
+        if row_cols[c].button(mark if mark else " ", key=f"s{idx}", disabled=mark is not None or st.session_state.winner is not None):
             st.session_state.pending_move = idx
             st.rerun()
 
 # --- 5. BIDDING ---
 if 'pending_move' in st.session_state and st.session_state.winner is None:
-    st.write(f"### Bidding on Square {st.session_state.pending_move + 1}")
+    st.markdown(f"### 🎯 Bidding on Square {st.session_state.pending_move + 1}")
     bid = st.number_input("Enter your bid:", 0, st.session_state.cash['Player'], step=10)
     
     if st.button("Submit Bid", type="primary", use_container_width=True):
@@ -122,7 +126,6 @@ if 'pending_move' in st.session_state and st.session_state.winner is None:
             st.session_state.board[st.session_state.pending_move] = 'X'
             st.success(f"You won! AI bid ${ai_bid}")
         else:
-            # AI wins and takes its BEST move
             best_sq = get_best_move(st.session_state.board)
             st.session_state.board[best_sq] = 'O'
             st.error(f"AI won the bid (${ai_bid}) and took Square {best_sq+1}!")
