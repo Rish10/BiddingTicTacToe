@@ -1,344 +1,377 @@
 import streamlit as st
 import streamlit.components.v1 as components
-import random
 
 st.set_page_config(page_title="Bidding War", layout="centered")
 
-# --- GAME LOGIC ---
-def check_winner(board):
-    lines = [(0,1,2),(3,4,5),(6,7,8),(0,3,6),(1,4,7),(2,5,8),(0,4,8),(2,4,6)]
-    for a, b, c in lines:
-        if board[a] == board[b] == board[c] and board[a] is not None:
-            return board[a]
-    return "Draw" if None not in board else None
+# Hide Streamlit chrome to give the component full space
+st.markdown("""
+<style>
+  #MainMenu, footer, header { visibility: hidden; }
+  .block-container { padding: 0 !important; }
+</style>
+""", unsafe_allow_html=True)
 
-def minimax(board, depth, is_maxing):
-    res = check_winner(board)
-    if res == 'O': return 10 - depth
-    if res == 'X': return depth - 10
-    if res == "Draw": return 0
-    scores = []
-    for i in range(9):
-        if board[i] is None:
-            board[i] = 'O' if is_maxing else 'X'
-            scores.append(minimax(board, depth + 1, not is_maxing))
-            board[i] = None
-    return max(scores) if is_maxing else min(scores)
-
-def get_best_move(board):
-    best_val, move = -1000, -1
-    for i in range(9):
-        if board[i] is None:
-            board[i] = 'O'
-            val = minimax(board, 0, False)
-            board[i] = None
-            if val > best_val:
-                best_val, move = val, i
-    return move
-
-def calculate_ai_bid(board, ai_cash, player_cash):
-    empty = board.count(None)
-    if empty > 6:
-        return random.randint(max(1, int(ai_cash * 0.01)), max(2, int(ai_cash * 0.25)))
-    return random.randint(int(ai_cash * 0.1), int(ai_cash * 0.5))
-
-# --- SESSION STATE ---
-if 'board' not in st.session_state:
-    st.session_state.board = [None] * 9
-    st.session_state.cash = {'Player': 1000, 'AI': 1000}
-    st.session_state.winner = None
-    st.session_state.pending_move = None
-    st.session_state.flash = None
-
-# --- HANDLE INCOMING ACTION FROM COMPONENT ---
-params = st.query_params
-if "sq" in params and st.session_state.pending_move is None and st.session_state.winner is None:
-    sq = int(params["sq"])
-    if st.session_state.board[sq] is None:
-        st.session_state.pending_move = sq
-    st.query_params.clear()
-    st.rerun()
-
-if "bid" in params and "sq_confirm" in params and st.session_state.winner is None:
-    sq = int(params["sq_confirm"])
-    bid = int(params["bid"])
-    board = st.session_state.board
-    ai_bid = calculate_ai_bid(board, st.session_state.cash['AI'], st.session_state.cash['Player'])
-    st.session_state.cash['Player'] -= bid
-    st.session_state.cash['AI'] -= ai_bid
-    if bid >= ai_bid:
-        st.session_state.board[sq] = 'X'
-        st.session_state.flash = (f"You won the bid! AI bid ${ai_bid} 🎉", "success")
-    else:
-        best_sq = get_best_move(st.session_state.board)
-        st.session_state.board[best_sq] = 'O'
-        st.session_state.flash = (f"AI won (${ai_bid}) → took Square {best_sq+1} 😤", "error")
-    st.session_state.winner = check_winner(st.session_state.board)
-    st.session_state.pending_move = None
-    st.query_params.clear()
-    st.rerun()
-
-if "cancel" in params:
-    st.session_state.pending_move = None
-    st.query_params.clear()
-    st.rerun()
-
-if "reset" in params:
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
-    st.query_params.clear()
-    st.rerun()
-
-# --- BUILD THE FULL HTML UI ---
-board = st.session_state.board
-pending = st.session_state.pending_move
-winner = st.session_state.winner
-p_cash = st.session_state.cash['Player']
-ai_cash = st.session_state.cash['AI']
-flash = st.session_state.flash
-
-# Build cell HTML
-cells = ""
-for i in range(9):
-    mark = board[i]
-    if mark == 'X':
-        cells += f'<div class="cell taken x">X</div>'
-    elif mark == 'O':
-        cells += f'<div class="cell taken o">O</div>'
-    elif winner is not None or pending is not None:
-        cells += f'<div class="cell locked">{i+1}</div>'
-    else:
-        cells += f'<div class="cell empty" onclick="selectSquare({i})">{i+1}</div>'
-
-# Flash message
-flash_html = ""
-if flash:
-    msg, kind = flash
-    color = "#1e7e34" if kind == "success" else "#c0392b"
-    bg = "#d4edda" if kind == "success" else "#f8d7da"
-    flash_html = f'<div style="background:{bg};color:{color};padding:10px 14px;border-radius:8px;margin-bottom:12px;font-weight:600;">{msg}</div>'
-    st.session_state.flash = None
-
-# Bidding section
-bidding_html = ""
-if pending is not None and winner is None:
-    bidding_html = f"""
-    <div class="bidding-box">
-        <div class="bid-title">🎯 Square {pending+1} selected — place your bid</div>
-        <input type="number" id="bidInput" min="0" max="{p_cash}" value="0" step="10" />
-        <div class="bid-buttons">
-            <button class="btn-primary" onclick="submitBid()">✅ Submit Bid</button>
-            <button class="btn-cancel" onclick="cancelBid()">❌ Cancel</button>
-        </div>
-    </div>
-    """
-
-# Winner section
-winner_html = ""
-if winner:
-    if winner == "Draw":
-        msg, emoji = "It's a Draw!", "🤝"
-        color = "#856404"
-        bg = "#fff3cd"
-    elif winner == "X":
-        msg, emoji = "You Win!", "🎉"
-        color = "#155724"
-        bg = "#d4edda"
-    else:
-        msg, emoji = "AI Wins!", "🤖"
-        color = "#721c24"
-        bg = "#f8d7da"
-    winner_html = f"""
-    <div style="background:{bg};color:{color};padding:16px;border-radius:10px;text-align:center;margin-top:12px;">
-        <div style="font-size:2rem;">{emoji}</div>
-        <div style="font-size:1.4rem;font-weight:bold;">{msg}</div>
-        <button class="btn-primary" style="margin-top:12px;" onclick="resetGame()">🔄 Play Again</button>
-    </div>
-    """
-
-html = f"""
+components.html("""
 <!DOCTYPE html>
 <html>
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <style>
-  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-  body {{
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: transparent;
-    padding: 8px;
-  }}
-  h1 {{
-    font-size: 1.5rem;
-    font-weight: 800;
-    text-align: center;
-    margin-bottom: 10px;
-  }}
-  .info-box {{
-    background: #e8f4fd;
-    border: 1px solid #bee3f8;
-    border-radius: 8px;
-    padding: 8px 12px;
-    font-size: 0.85rem;
-    margin-bottom: 12px;
-    color: #2c5282;
-  }}
-  .metrics {{
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-bottom: 14px;
-  }}
-  .metric {{
-    background: #f7f7f7;
-    border-radius: 10px;
-    padding: 10px 12px;
-    text-align: center;
-    border: 1px solid #e0e0e0;
-  }}
-  .metric-label {{ font-size: 0.75rem; color: #666; }}
-  .metric-value {{ font-size: 1.3rem; font-weight: bold; color: #222; }}
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
-  /* THE BOARD — hardcoded 3 columns, no flexbox, no Streamlit interference */
-  .board {{
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    width: 100%;
-    max-width: 320px;
-    margin: 0 auto 16px auto;
-    border: 3px solid #333;
-    border-radius: 8px;
-    overflow: hidden;
-  }}
-  .cell {{
-    aspect-ratio: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.8rem;
-    font-weight: bold;
-    border: 1.5px solid #bbb;
-    min-height: 80px;
-    transition: background 0.15s;
-  }}
-  .cell.empty {{
-    cursor: pointer;
-    background: #fff;
-    color: #999;
-    font-size: 1rem;
-  }}
-  .cell.empty:hover {{ background: #e8f4fd; color: #1a73e8; }}
-  .cell.empty:active {{ background: #c9e3fa; }}
-  .cell.locked {{ background: #f0f0f0; color: #ccc; font-size: 1rem; cursor: not-allowed; }}
-  .cell.taken {{ background: #f9f9f9; cursor: default; }}
-  .cell.x {{ color: #1a73e8; }}
-  .cell.o {{ color: #e53935; }}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #f4f6fb;
+  min-height: 100vh;
+  padding: 16px;
+}
 
-  .bidding-box {{
-    background: #f0f7ff;
-    border: 2px solid #1a73e8;
-    border-radius: 12px;
-    padding: 16px;
-    margin-bottom: 12px;
-  }}
-  .bid-title {{
-    font-weight: 700;
-    margin-bottom: 10px;
-    font-size: 1rem;
-  }}
-  input[type=number] {{
-    width: 100%;
-    padding: 10px;
-    font-size: 1.2rem;
-    border: 2px solid #1a73e8;
-    border-radius: 8px;
-    margin-bottom: 10px;
-    text-align: center;
-  }}
-  .bid-buttons {{
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-  }}
-  .btn-primary {{
-    background: #1a73e8;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    padding: 12px;
-    font-size: 1rem;
-    font-weight: 700;
-    cursor: pointer;
-    width: 100%;
-  }}
-  .btn-primary:active {{ background: #1558b0; }}
-  .btn-cancel {{
-    background: #f1f3f4;
-    color: #333;
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    padding: 12px;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    width: 100%;
-  }}
+h1 {
+  font-size: 1.4rem;
+  font-weight: 800;
+  text-align: center;
+  margin-bottom: 10px;
+  color: #1a1a2e;
+}
+
+.info-box {
+  background: #e8f4fd;
+  border: 1px solid #bee3f8;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  margin-bottom: 12px;
+  color: #2c5282;
+  text-align: center;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.metric {
+  background: white;
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+  border: 1px solid #e0e0e0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.metric-label { font-size: 0.72rem; color: #888; margin-bottom: 2px; }
+.metric-value { font-size: 1.3rem; font-weight: bold; color: #222; }
+
+/* THE BOARD — pure CSS grid, always 3 columns */
+.board {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  width: min(90vw, 300px);
+  margin: 0 auto 16px auto;
+  border: 3px solid #2d3748;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 900;
+  border: 1.5px solid #cbd5e0;
+  min-height: 80px;
+  transition: background 0.12s, transform 0.1s;
+  position: relative;
+}
+.cell.empty {
+  cursor: pointer;
+  background: white;
+  color: #bbb;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.cell.empty:hover  { background: #ebf8ff; color: #3182ce; }
+.cell.empty:active { background: #bee3f8; transform: scale(0.95); }
+.cell.locked { background: #f7fafc; color: #ddd; font-size: 0.85rem; cursor: not-allowed; }
+.cell.x { background: #ebf8ff; color: #2b6cb0; cursor: default; }
+.cell.o { background: #fff5f5; color: #c53030; cursor: default; }
+
+/* FLASH */
+.flash {
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-align: center;
+  animation: fadeIn 0.3s ease;
+}
+.flash.success { background: #c6f6d5; color: #276749; }
+.flash.error   { background: #fed7d7; color: #9b2335; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+
+/* BIDDING BOX */
+.bidding-box {
+  background: white;
+  border: 2px solid #3182ce;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 2px 8px rgba(49,130,206,0.15);
+  animation: fadeIn 0.25s ease;
+}
+.bid-title { font-weight: 700; margin-bottom: 10px; font-size: 0.95rem; color: #2d3748; }
+
+.slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+input[type=range] {
+  flex: 1;
+  -webkit-appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: #bee3f8;
+  outline: none;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: #3182ce;
+  cursor: pointer;
+}
+.bid-amount {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #3182ce;
+  min-width: 70px;
+  text-align: center;
+}
+
+.bid-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.btn {
+  border: none; border-radius: 8px;
+  padding: 13px; font-size: 0.95rem;
+  font-weight: 700; cursor: pointer; width: 100%;
+  transition: transform 0.1s, opacity 0.1s;
+}
+.btn:active { transform: scale(0.97); opacity: 0.85; }
+.btn-primary { background: #3182ce; color: white; }
+.btn-cancel  { background: #edf2f7; color: #4a5568; border: 1px solid #e2e8f0; }
+.btn-reset   {
+  display: block; width: 100%;
+  background: #3182ce; color: white;
+  border: none; border-radius: 8px;
+  padding: 14px; font-size: 1rem;
+  font-weight: 700; cursor: pointer;
+  margin-top: 12px;
+}
+
+/* WINNER */
+.winner-box {
+  text-align: center;
+  padding: 20px 16px;
+  border-radius: 12px;
+  margin-top: 4px;
+  animation: fadeIn 0.4s ease;
+}
+.winner-emoji { font-size: 2.5rem; }
+.winner-text  { font-size: 1.4rem; font-weight: 800; margin: 6px 0 0; }
 </style>
 </head>
 <body>
 
 <h1>💰 Bidding Tic-Tac-Toe</h1>
-
 <div class="info-box">
-  👉 <strong>Step 1:</strong> Tap a numbered square &nbsp;|&nbsp; 👉 <strong>Step 2:</strong> Enter your bid
+  👉 <strong>Tap a square</strong> to select it, then <strong>place your bid</strong>
 </div>
-
-{flash_html}
 
 <div class="metrics">
   <div class="metric">
-    <div class="metric-label">Your Cash 🟦</div>
-    <div class="metric-value">${p_cash}</div>
+    <div class="metric-label">Your Cash 🟦 (X)</div>
+    <div class="metric-value" id="playerCash">$1000</div>
   </div>
   <div class="metric">
-    <div class="metric-label">AI Cash 🟥</div>
-    <div class="metric-value">${ai_cash}</div>
+    <div class="metric-label">AI Cash 🟥 (O)</div>
+    <div class="metric-value" id="aiCash">$1000</div>
   </div>
 </div>
 
-<div class="board">
-  {cells}
-</div>
+<div id="flash"></div>
 
-{bidding_html}
-{winner_html}
+<div class="board" id="board"></div>
+
+<div id="biddingArea"></div>
 
 <script>
-  function go(params) {{
-    const url = new URL(window.parent.location.href);
-    Object.keys(params).forEach(k => url.searchParams.set(k, params[k]));
-    window.parent.location.href = url.toString();
-  }}
+// ── STATE ──────────────────────────────────────────────
+const state = {
+  board: Array(9).fill(null),
+  cash: { Player: 1000, AI: 1000 },
+  winner: null,
+  pending: null,
+};
 
-  function selectSquare(idx) {{
-    go({{ sq: idx }});
-  }}
+// ── AI LOGIC ───────────────────────────────────────────
+function checkWinner(b) {
+  const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+  for (const [a,bv,c] of lines) {
+    if (b[a] && b[a] === b[bv] && b[a] === b[c]) return b[a];
+  }
+  return b.includes(null) ? null : 'Draw';
+}
 
-  function submitBid() {{
-    const bid = parseInt(document.getElementById('bidInput').value) || 0;
-    go({{ sq_confirm: {pending if pending is not None else 0}, bid: bid }});
-  }}
+function minimax(b, depth, isMax) {
+  const r = checkWinner(b);
+  if (r === 'O') return 10 - depth;
+  if (r === 'X') return depth - 10;
+  if (r === 'Draw') return 0;
+  let best = isMax ? -Infinity : Infinity;
+  for (let i = 0; i < 9; i++) {
+    if (!b[i]) {
+      b[i] = isMax ? 'O' : 'X';
+      const score = minimax(b, depth + 1, !isMax);
+      b[i] = null;
+      best = isMax ? Math.max(best, score) : Math.min(best, score);
+    }
+  }
+  return best;
+}
 
-  function cancelBid() {{
-    go({{ cancel: 1 }});
-  }}
+function getBestMove(b) {
+  let best = -Infinity, move = -1;
+  for (let i = 0; i < 9; i++) {
+    if (!b[i]) {
+      b[i] = 'O';
+      const score = minimax(b, 0, false);
+      b[i] = null;
+      if (score > best) { best = score; move = i; }
+    }
+  }
+  return move;
+}
 
-  function resetGame() {{
-    go({{ reset: 1 }});
-  }}
+function aiRandomBid(empty) {
+  const cash = state.cash.AI;
+  if (empty > 6) return Math.floor(Math.random() * Math.max(2, cash * 0.25)) + 1;
+  return Math.floor(Math.random() * (cash * 0.4)) + Math.floor(cash * 0.1);
+}
+
+// ── FLASH ───────────────────────────────────────────────
+function showFlash(msg, kind) {
+  const el = document.getElementById('flash');
+  el.innerHTML = `<div class="flash ${kind}">${msg}</div>`;
+  setTimeout(() => { el.innerHTML = ''; }, 3500);
+}
+
+// ── RENDER ──────────────────────────────────────────────
+function render() {
+  // Metrics
+  document.getElementById('playerCash').textContent = '$' + state.cash.Player;
+  document.getElementById('aiCash').textContent = '$' + state.cash.AI;
+
+  // Board
+  const boardEl = document.getElementById('board');
+  boardEl.innerHTML = '';
+  for (let i = 0; i < 9; i++) {
+    const cell = document.createElement('div');
+    const mark = state.board[i];
+    if (mark === 'X') {
+      cell.className = 'cell x'; cell.textContent = 'X';
+    } else if (mark === 'O') {
+      cell.className = 'cell o'; cell.textContent = 'O';
+    } else if (state.winner || state.pending !== null) {
+      cell.className = 'cell locked'; cell.textContent = i + 1;
+    } else {
+      cell.className = 'cell empty';
+      cell.textContent = i + 1;
+      cell.onclick = () => selectSquare(i);
+    }
+    boardEl.appendChild(cell);
+  }
+
+  // Bidding / winner area
+  const area = document.getElementById('biddingArea');
+  if (state.winner) {
+    let bg, color, emoji, msg;
+    if (state.winner === 'Draw') { bg='#fffff0'; color='#975a16'; emoji='🤝'; msg='Draw!'; }
+    else if (state.winner === 'X') { bg='#f0fff4'; color='#276749'; emoji='🎉'; msg='You Win!'; }
+    else { bg='#fff5f5'; color='#9b2335'; emoji='🤖'; msg='AI Wins!'; }
+    area.innerHTML = `
+      <div class="winner-box" style="background:${bg};border:2px solid ${color};">
+        <div class="winner-emoji">${emoji}</div>
+        <div class="winner-text" style="color:${color};">${msg}</div>
+        <button class="btn-reset" onclick="resetGame()">🔄 Play Again</button>
+      </div>`;
+  } else if (state.pending !== null) {
+    const maxBid = state.cash.Player;
+    area.innerHTML = `
+      <div class="bidding-box">
+        <div class="bid-title">🎯 Square ${state.pending + 1} selected — place your bid</div>
+        <div class="slider-row">
+          <input type="range" id="bidSlider" min="0" max="${maxBid}" value="0" step="10"
+            oninput="document.getElementById('bidDisplay').textContent='$'+this.value">
+          <div class="bid-amount" id="bidDisplay">$0</div>
+        </div>
+        <div class="bid-buttons">
+          <button class="btn btn-primary" onclick="submitBid()">✅ Submit</button>
+          <button class="btn btn-cancel" onclick="cancelBid()">❌ Cancel</button>
+        </div>
+      </div>`;
+  } else {
+    area.innerHTML = '';
+  }
+}
+
+// ── ACTIONS ─────────────────────────────────────────────
+function selectSquare(i) {
+  if (state.board[i] || state.winner || state.pending !== null) return;
+  state.pending = i;
+  render();
+}
+
+function submitBid() {
+  const slider = document.getElementById('bidSlider');
+  const bid = parseInt(slider ? slider.value : 0) || 0;
+  const sq = state.pending;
+  const empty = state.board.filter(v => v === null).length;
+  const aiBid = Math.min(aiRandomBid(empty), state.cash.AI);
+
+  state.cash.Player -= bid;
+  state.cash.AI -= aiBid;
+
+  if (bid >= aiBid) {
+    state.board[sq] = 'X';
+    showFlash(`You won the bid! AI bid $${aiBid} 🎉`, 'success');
+  } else {
+    const best = getBestMove(state.board);
+    state.board[best] = 'O';
+    showFlash(`AI won (bid $${aiBid}) → took Square ${best + 1} 😤`, 'error');
+  }
+
+  state.pending = null;
+  state.winner = checkWinner(state.board);
+  render();
+}
+
+function cancelBid() {
+  state.pending = null;
+  render();
+}
+
+function resetGame() {
+  state.board = Array(9).fill(null);
+  state.cash = { Player: 1000, AI: 1000 };
+  state.winner = null;
+  state.pending = null;
+  document.getElementById('flash').innerHTML = '';
+  render();
+}
+
+// ── INIT ────────────────────────────────────────────────
+render();
 </script>
 </body>
 </html>
-"""
-
-components.html(html, height=750, scrolling=False)
+""", height=700, scrolling=True)
